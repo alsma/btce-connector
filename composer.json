@@ -1,0 +1,11 @@
+{
+  "name": "alsma/btce-connector",
+  "description": "Library that is helpful for interaction with CEX.io",
+  "require": {
+    "php": ">=5.6.0",
+    "guzzle/guzzle": "~3.9"
+  },
+  "autoload": {
+    "psr-4": {"Alsma\\BTCEConnector\\": "src/"}
+  }
+}
