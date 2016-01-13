@@ -200,7 +200,9 @@ class Client extends HttpClient
     protected function sendTradeAPIRequest(RequestInterface $request, $retryNo = 0)
     {
         if ($request instanceof EntityEnclosingRequest) {
-            $request->setPostField('nonce', time() - 1e5);
+            $nonce = (int)bcmul(bcadd(time() - 1e5, substr(microtime(), 0, 4), 2), 100);
+
+            $request->setPostField('nonce', $nonce);
             $request->setHeader('Sign', hash_hmac('sha512', $request->getPostFields(), $this->apiSecret));
             $request->setHeader('Key', $this->apiKey);
         }
