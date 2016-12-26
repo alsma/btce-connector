@@ -2,19 +2,15 @@
 
 namespace Alsma\BTCEConnector\Api;
 
-use Guzzle\Common\Collection;
-use Guzzle\Http\Client as HttpClient;
-use Guzzle\Http\Message\RequestInterface;
-use Guzzle\Http\Message\EntityEnclosingRequest;
-
 use Alsma\BTCEConnector\Exception\RemoteError;
 
-/*
- * Use this class instead of GuzzleHttp\Client because of error when content-type header is set.
- * See CurlFactory set it always.
- */
+use GuzzleHttp\Psr7\Uri;
+use GuzzleHttp\Psr7\Request;
+use GuzzleHttp\RequestOptions;
 
-class Client extends HttpClient
+use Psr\Http\Message\ResponseInterface;
+
+class Client extends \GuzzleHttp\Client
 {
     const TRADE_URI = 'tapi';
 
@@ -27,28 +23,23 @@ class Client extends HttpClient
     /** @var string */
     protected $apiSecret;
 
-    /**
-     * @param array       $config
-     * @param string|null $proxy
-     */
-    public function __construct(array $config, $proxy = null)
-    {
-        $defaults = ['base_url' => 'https://btc-e.com/',];
-        $required = ['base_url', 'api_key', 'api_secret'];
+    /** @var array */
+    protected $defaultRequestOptions = [];
 
+    /**
+     * @param array  $config
+     * @param string $proxy
+     */
+    public function __construct(array $config, string $proxy = null)
+    {
         if (null !== $proxy) {
-            $defaults[self::REQUEST_OPTIONS] = [
-                'proxy'  => $proxy,
-                'verify' => false
-            ];
+            $this->defaultRequestOptions[RequestOptions::PROXY] = $proxy;
         }
 
-        $config = Collection::fromConfig($config, $defaults, $required);
-        $this->apiKey = $config->get('api_key');
-        $this->apiSecret = $config->get('api_secret');
-        $config->set('exceptions', false);
+        $this->apiKey = $config['api_key'] ?? '';
+        $this->apiSecret = $config['api_secret'] ?? '';
 
-        parent::__construct($config->get('base_url'), $config);
+        parent::__construct(['base_uri' => 'https://btc-e.com', 'http_errors' => false]);
     }
 
     /**
@@ -58,11 +49,9 @@ class Client extends HttpClient
      *
      * @return array
      */
-    public function redeemCoupon($code)
+    public function redeemCoupon(string $code): array
     {
-        $request = $this->post(self::TRADE_URI, [], ['method' => 'RedeemCoupon', 'coupon' => $code]);
-
-        return $this->sendTradeAPIRequest($request);
+        return $this->sendTradeAPIRequest(['method' => 'RedeemCoupon', 'coupon' => $code]);
     }
 
     /**
@@ -70,47 +59,32 @@ class Client extends HttpClient
      *
      * @return array
      */
-    public function getInfo()
+    public function getInfo(): array
     {
-        $request = $this->post(self::TRADE_URI, [], ['method' => 'getInfo']);
-
-        return $this->sendTradeAPIRequest($request);
+        return $this->sendTradeAPIRequest(['method' => 'getInfo']);
     }
 
     /**
      * @param string $pair
      * @param string $type
-     * @param float  $rate
-     * @param float  $amount
+     * @param string $rate
+     * @param string $amount
      *
      * @return array
      */
-    public function trade($pair, $type, $rate, $amount)
+    public function trade(string $pair, string $type, string $rate, string $amount): array
     {
-        $request = $this->post(self::TRADE_URI, [], [
-            'method' => 'Trade',
-            'pair'   => $pair,
-            'type'   => $type,
-            'rate'   => $rate,
-            'amount' => $amount
-        ]);
-
-        return $this->sendTradeAPIRequest($request);
+        return $this->sendTradeAPIRequest(['method' => 'Trade', 'pair' => $pair, 'type' => $type, 'rate' => $rate, 'amount' => $amount]);
     }
 
     /**
-     * @param $orderId
+     * @param string $orderId
      *
-     * @return mixed
+     * @return array
      */
-    public function cancelOrder($orderId)
+    public function cancelOrder(string $orderId): array
     {
-        $request = $this->post(self::TRADE_URI, [], [
-            'method'   => 'CancelOrder',
-            'order_id' => $orderId
-        ]);
-
-        return $this->sendTradeAPIRequest($request);
+        return $this->sendTradeAPIRequest(['method' => 'CancelOrder', 'order_id' => $orderId]);
     }
 
     /**
@@ -120,7 +94,7 @@ class Client extends HttpClient
      *
      * @return array
      */
-    public function getTradeHistory(array $filters = [])
+    public function getTradeHistory(array $filters = []): array
     {
         $filters = array_intersect_key($filters, array_flip([
             'from',
@@ -133,9 +107,7 @@ class Client extends HttpClient
             'pair'
         ]));
 
-        $request = $this->post(self::TRADE_URI, [], array_merge($filters, ['method' => 'TradeHistory']));
-
-        return $this->sendTradeAPIRequest($request);
+        return $this->sendTradeAPIRequest(array_merge($filters, ['method' => 'TradeHistory']));
     }
 
     /**
@@ -145,7 +117,7 @@ class Client extends HttpClient
      *
      * @return array
      */
-    public function getTransHistory(array $filters = [])
+    public function getTransHistory(array $filters = []): array
     {
         $filters = array_intersect_key($filters, array_flip([
             'from',
@@ -157,9 +129,7 @@ class Client extends HttpClient
             'end'
         ]));
 
-        $request = $this->post(self::TRADE_URI, [], array_merge(['method' => 'TransHistory'], $filters));
-
-        return $this->sendTradeAPIRequest($request);
+        return $this->sendTradeAPIRequest(array_merge(['method' => 'TransHistory'], $filters));
     }
 
     /**
@@ -167,11 +137,11 @@ class Client extends HttpClient
      *
      * @return array
      */
-    public function getPairsInfo()
+    public function getPairsInfo(): array
     {
-        $request = $this->get('api/3/info');
+        $pairInfo = $this->sendOpenAPIRequest(new Uri('api/3/info'));
 
-        return $this->sendOpenAPIRequest($request)['pairs'];
+        return $pairInfo['pairs'] ?? [];
     }
 
     /**
@@ -182,36 +152,36 @@ class Client extends HttpClient
      *
      * @return array
      */
-    public function getDepth($pair, $limit = 150)
+    public function getDepth($pair, $limit = 150): array
     {
-        $request = $this->get(['api/3/depth/{pair}?limit={limit}', ['pair' => $pair, 'limit' => $limit]]);
-        $result = $this->sendOpenAPIRequest($request);
+        $result = $this->sendOpenAPIRequest(new Uri(sprintf('api/3/depth/%s?limit=%d', $pair, $limit)));
 
         return current($result);
     }
 
     /**
-     * @param RequestInterface $request
-     * @param int              $retryNo
+     * @param array $body
+     * @param int   $retryNo
      *
-     * @return mixed
-     * @throws RemoteError
+     * @return array
      */
-    protected function sendTradeAPIRequest(RequestInterface $request, $retryNo = 0)
+    protected function sendTradeAPIRequest(array $body = [], int $retryNo = 0): array
     {
-        if ($request instanceof EntityEnclosingRequest) {
-            $nonce = (int)bcmul(bcadd(time(), substr(microtime(), 0, 3), 1), 10) - 13e9;
+        $body['nonce'] = (int)bcmul(bcadd(time(), substr(microtime(), 0, 3), 1), 10) - 13e9;
 
-            $request->setPostField('nonce', $nonce);
-            $request->setHeader('Sign', hash_hmac('sha512', $request->getPostFields(), $this->apiSecret));
-            $request->setHeader('Key', $this->apiKey);
-        }
+        $postFields = http_build_query($body, '', '&');
+
+        $request = new Request('POST', self::TRADE_URI, [], $postFields);
+        $request = $request->withHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
+        $request = $request->withHeader('Sign', hash_hmac('sha512', $postFields, $this->apiSecret));
+        $request = $request->withHeader('Key', $this->apiKey);
 
         $response = $this->send($request);
-        $data = $request->getResponse()->json();
-        if ($response->isSuccessful() && isset($data['success']) && 1 === $data['success']) {
+        $data = \GuzzleHttp\json_decode((string)$response->getBody(), true);
+
+        if (self::isSuccessful($response) && isset($data['success']) && 1 === $data['success']) {
             return $data['return'];
-        } elseif ($response->isServerError() && $retryNo <= self::RETRY_COUNT) {
+        } elseif (self::isServerError($response) && $retryNo <= self::RETRY_COUNT) {
             sleep(self::RETRY_INTERVAL);
 
             return $this->sendTradeAPIRequest($request, ++$retryNo);
@@ -221,24 +191,44 @@ class Client extends HttpClient
     }
 
     /**
-     * @param RequestInterface $request
-     * @param int              $retryNo
+     * @param Uri $uri
+     * @param int $retryNo
      *
      * @return mixed
-     * @throws RemoteError
      */
-    protected function sendOpenAPIRequest(RequestInterface $request, $retryNo = 0)
+    protected function sendOpenAPIRequest(Uri $uri, int $retryNo = 0): array
     {
-        $response = $this->send($request);
-        $data = $request->getResponse()->json();
-        if ($response->isSuccessful()) {
+        $response = $this->get($uri, $this->defaultRequestOptions);
+        $data = \GuzzleHttp\json_decode((string)$response->getBody(), true);
+
+        if (self::isSuccessful($response) && is_array($data)) {
             return $data;
-        } elseif ($response->isServerError() && $retryNo <= self::RETRY_COUNT) {
+        } elseif (self::isServerError($response) && $retryNo <= self::RETRY_COUNT) {
             sleep(self::RETRY_INTERVAL);
 
-            return $this->sendTradeAPIRequest($request, ++$retryNo);
+            return $this->sendOpenAPIRequest($uri, ++$retryNo);
         } else {
-            throw new RemoteError(isset($data['error']) ? $data['error'] : null);
+            throw new RemoteError($data['error'] ?? 'unknown');
         }
+    }
+
+    /**
+     * @param ResponseInterface $response
+     *
+     * @return bool
+     */
+    private static function isSuccessful(ResponseInterface $response)
+    {
+        return $response->getStatusCode() === 200;
+    }
+
+    /**
+     * @param ResponseInterface $response
+     *
+     * @return bool
+     */
+    private static function isServerError(ResponseInterface $response)
+    {
+        return $response->getStatusCode() >= 500 && $response->getStatusCode() < 600;
     }
 }
