@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types = 1);
+
 namespace Alsma\BTCEConnector\Api;
 
 use Alsma\BTCEConnector\Exception\RemoteError;
@@ -186,7 +188,7 @@ class Client extends \GuzzleHttp\Client
      */
     protected function sendTradeAPIRequest(array $body = [], int $retryNo = 0): array
     {
-        $body['nonce'] = (int)bcmul(bcadd(time(), substr(microtime(), 0, 3), 1), 10) - 13e9;
+        $body['nonce'] = (int)bcmul(bcadd((string)time(), substr(microtime(), 0, 3), 1), '10') - 13e9;
 
         $postFields = http_build_query($body, '', '&');
 
