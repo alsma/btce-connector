@@ -43,6 +43,25 @@ class Client extends \GuzzleHttp\Client
     }
 
     /**
+     * {@see https://btc-e.com/tapi/docs#CreateCoupon}
+     *
+     * @param string      $currency
+     * @param string      $amount
+     * @param string|null $receiver
+     *
+     * @return array
+     */
+    public function createCoupon(string $currency, string $amount, string $receiver = null): array
+    {
+        $params = ['method' => 'CreateCoupon', 'currency' => $currency, 'amount' => $amount];
+        if (null !== $receiver) {
+            $params['receiver'] = $receiver;
+        }
+
+        return $this->sendTradeAPIRequest($params);
+    }
+
+    /**
      * {@see https://btc-e.com/tapi/docs#RedeemCoupon}
      *
      * @param string $code
